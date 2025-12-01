@@ -15,9 +15,15 @@ fn main() -> std::io::Result<()> {
         fs::remove_file(path)?;
     }
 
+    // create a transport layer 
     let transport = FuseListener::bind("/tmp/fuse.sock")?.accept()?;
+
+    // currently the protocol layer just sends a message
     let mut proto = FuseProtocol::new(transport);
-    proto.send_init()?;
+    let init = proto.send_init()?;
+    println!("FUSE Initialized: major={} minor={}, congestion_threshold={}", init.major, init.minor, init.congestion_threshold);
+    println!("flags = {}, bg={}, readahead={}", init.flags, init.max_background, init.max_readahead);
+
 
     Ok(())
 }
