@@ -1,0 +1,1 @@
+// constants for all FUSE opcodes

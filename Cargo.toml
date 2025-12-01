@@ -1,0 +1,8 @@
+[package]
+name = "fuse_client_for_fs"
+version = "0.1.0"
+edition = "2024"
+
+
+
+[dependencies]
