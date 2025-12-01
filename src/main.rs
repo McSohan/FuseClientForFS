@@ -24,10 +24,18 @@ fn main() -> std::io::Result<()> {
     println!("FUSE Initialized: major={} minor={}, congestion_threshold={}", init.major, init.minor, init.congestion_threshold);
     // println!("flags = {}, bg={}, readahead={}", init.flags, init.max_background, init.max_readahead);
     let entry = proto.lookup(1, "hello.txt")?;
-    println!("LOOKUP: nodeid={} size={}",
-        entry.nodeid,
-        entry.attr.size
+    println!("Found inode = {}", entry.nodeid);
+
+    let open_out = proto.open(entry.nodeid, libc::O_RDONLY as u32)?;
+    println!("FUSE_OPEN OK: fh={} flags={}",
+        open_out.fh, open_out.open_flags
     );
+
+    let data = proto.read(entry.nodeid, open_out.fh, 0, 1024)?;
+    println!("File contents: {:?}", String::from_utf8_lossy(&data));
+
+    proto.release(entry.nodeid, open_out.fh)?;
+
 
     Ok(())
 }

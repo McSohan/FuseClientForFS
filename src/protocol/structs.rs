@@ -118,4 +118,86 @@ impl FuseEntryOut {
     }
 }
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct FuseOpenIn {
+    pub flags: u32, // these will come from lbc -- O_RDONLY, O_WRONLY etc. 
+    pub unused: u32,
+}
+
+impl FuseOpenIn {
+    pub fn new(flags: u32) -> Self {
+        Self { flags, unused: 0 }
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(
+                (self as *const FuseOpenIn) as *const u8,
+                std::mem::size_of::<FuseOpenIn>(),
+            )
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct FuseOpenOut {
+    pub fh: u64,
+    pub open_flags: u32,
+    pub padding: u32,
+}
+
+impl FuseOpenOut {
+    pub fn parse(buf: &[u8]) -> std::io::Result<Self> {
+
+        // Should this be equal??? Maybe not because future versions can append shit to it.
+        if buf.len() < std::mem::size_of::<Self>() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                format!("FuseOpenOut too small: {} bytes", buf.len()),
+            ));
+        }
+
+        Ok(unsafe { *(buf.as_ptr() as *const FuseOpenOut) })
+    }
+}
+
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct FuseReadIn {
+    pub fh: u64,
+    pub offset: u64,
+    pub size: u32,
+    pub read_flags: u32,
+    pub lock_owner: u64,
+    pub flags: u32,
+    pub padding: u32,
+}
+
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct FuseReleaseIn {
+    pub fh: u64,
+    pub flags: u32,
+    pub release_flags: u32,
+    pub lock_owner: u64,
+}
+
+impl FuseReleaseIn {
+    pub fn parse(buf: &[u8]) -> std::io::Result<Self> {
+        if buf.len() < std::mem::size_of::<Self>() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "FuseReleaseIn too small",
+            ));
+        }
+
+        let r = unsafe { *(buf.as_ptr() as *const FuseReleaseIn) };
+        Ok(r)
+    }
+}
+
 

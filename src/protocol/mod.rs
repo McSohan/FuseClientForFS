@@ -1,12 +1,15 @@
 // FUSE protocol manager (unique counter, send/recv)
 
-pub mod headers;
-pub mod opcodes;
-pub mod structs;
+mod headers;
+// Todo: make this not pub
+// This shouldnt be pub technically, but, 
+// I just want to get rid of the warnings for now - when I do cargo check
+pub mod opcodes; 
+mod structs;
 
 use crate::transport::unix_socket::FuseStream;
 use self::headers::*;
-use self::structs::{FuseInitIn, FuseInitOut, FuseEntryOut};
+use self::structs::*;
 use self::opcodes::*;
 
 
@@ -104,91 +107,93 @@ impl FuseProtocol {
 
         Ok(entry)
     }
-}
 
+    pub fn open(&mut self, nodeid: u64, flags: u32)
+    -> std::io::Result<FuseOpenOut>
+    {
+        let input = FuseOpenIn::new(flags);
+        let payload = input.as_bytes();
 
-/*
-pub struct FuseProtocol<T: Transport> {
-    pub transport: T,
-    pub unique: u64,
-}
+        let (hdr, resp_payload) =
+            self.send_request(FUSE_OPEN, nodeid, payload)?;
 
-impl<T: Transport> FuseProtocol<T> {
-    pub fn new(transport: T) -> Self {
-        Self { transport, unique: 2 }
+        if hdr.error != 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("OPEN failed: {}", hdr.error),
+            ));
+        }
+
+        let out = FuseOpenOut::parse(&resp_payload)?;
+        Ok(out)
     }
 
-    pub fn send_request(
-        &mut self,
-        opcode: u32,
-        nodeid: u64,
-        payload: &[u8],
-    ) -> std::io::Result<(FuseOutHeader, Vec<u8>)> {
-        let unique = self.alloc_unique();
-        let header = FuseInHeader::new(opcode, nodeid, unique, payload.len());
-        let mut buf = header.to_bytes();
-        buf.extend_from_slice(payload);
+    pub fn read(&mut self, nodeid: u64, fh: u64, offset: u64, size: u32)
+        -> std::io::Result<Vec<u8>>
+    {
+        let req = FuseReadIn {
+            fh,
+            offset,
+            size,
+            read_flags: 0,
+            lock_owner: 0,
+            flags: 0,
+            padding: 0,
+        };
 
-        self.transport.send(&buf)?;
-        let resp = self.transport.recv()?;
+        let payload = unsafe {
+            std::slice::from_raw_parts(
+                &req as *const _ as *const u8,
+                std::mem::size_of::<FuseReadIn>(),
+            )
+        };
 
-        let (hdr, payload) = FuseOutHeader::parse(&resp)?;
-        Ok((hdr, payload))
+        let (hdr, data) = self.send_request(FUSE_READ, nodeid, payload)?;
+
+        if hdr.error != 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("READ failed with error {}", hdr.error),
+            ));
+        }
+
+        Ok(data)
     }
 
-    fn alloc_unique(&mut self) -> u64 {
-        let u = self.unique;
-        self.unique += 1;
-        u
-    }
-}
-    */
 
-/*
-use crate::transport::unix_socket::FuseStream;
+    pub fn release(&mut self, inode: u64, fh: u64)
+        -> std::io::Result<()>
+    {
+        // Build fuse_release_in
+        let release_in = FuseReleaseIn {
+            fh,
+            flags: 0,
+            release_flags: 0,
+            lock_owner: 0,
+        };
 
-pub struct FuseProtocol {
-    stream: FuseStream,
-}
+        // SAFELY reinterpret struct as bytes
+        let bytes = unsafe {
+            std::slice::from_raw_parts(
+                &release_in as *const FuseReleaseIn as *const u8,
+                std::mem::size_of::<FuseReleaseIn>()
+            )
+        };
 
-impl FuseProtocol {
-    pub fn new(stream: FuseStream) -> Self {
-        Self { stream }
-    }
+        // Send request — reply has no payload
+        let (hdr, _) = self.send_request(FUSE_RELEASE, inode, bytes)?;
 
-    pub fn send_init(&mut self) -> std::io::Result<()> {
-        const FUSE_INIT_MSG: [u8; 104] = [
-            // header (40 bytes)
-            104, 0, 0, 0,     // len = 104
-            26, 0, 0, 0,      // opcode = INIT
-            2, 0, 0, 0,       // unique = 2
-            0, 0, 0, 0,       // unique high
-            0, 0, 0, 0,       // nodeid
-            0, 0, 0, 0,       // uid
-            0, 0, 0, 0,       // gid
-            0, 0, 0, 0,       // pid
-            0, 0, 0, 0,       // padding
+        if hdr.error != 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("RELEASE failed with error {}", hdr.error),
+            ));
+        }
 
-            // payload (64 bytes)
-            7, 0, 0, 0,
-            41, 0, 0, 0,
-            0, 0, 2, 0,
-            251, 255, 255, 115,
-            255, 1, 0, 0,
-
-            // rest zero
-            0,0,0,0,0,0,0,0,
-            0,0,0,0,0,0,0,0,
-            0,0,0,0,0,0,0,0,
-            0,0,0,0,0,0,0,0,
-            0,0,0,0,0,0,0,0,
-            0,0,0,0,0,0,0,0,
-        ];
-
-        self.stream.send(&FUSE_INIT_MSG)?;
         Ok(())
     }
+
+
 }
 
-    */
 
