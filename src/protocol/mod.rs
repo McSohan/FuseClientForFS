@@ -6,7 +6,7 @@ pub mod structs;
 
 use crate::transport::unix_socket::FuseStream;
 use self::headers::*;
-use self::structs::{FuseInitIn, FuseInitOut};
+use self::structs::{FuseInitIn, FuseInitOut, FuseEntryOut};
 use self::opcodes::*;
 
 
@@ -79,6 +79,30 @@ impl FuseProtocol {
         );
 
         Ok(init_out)
+    }
+
+    pub fn lookup(&mut self, parent: u64, name: &str)
+        -> std::io::Result<FuseEntryOut>
+    {
+        // FUSE LOOKUP requires utf8 bytes + trailing null byte
+        let mut payload = name.as_bytes().to_vec();
+        payload.push(0);
+
+        // Send the request
+        let (hdr, resp_payload) =
+            self.send_request(FUSE_LOOKUP, parent, &payload)?;
+
+        if hdr.error != 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("LOOKUP failed with error {}", hdr.error),
+            ));
+        }
+
+        // Parse fuse_entry_out from response payload
+        let entry = FuseEntryOut::parse(&resp_payload)?;
+
+        Ok(entry)
     }
 }
 

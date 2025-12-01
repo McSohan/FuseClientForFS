@@ -13,14 +13,18 @@ pub struct FuseInHeader {
 
 impl FuseInHeader {
     pub fn new(opcode: u32, nodeid: u64, unique: u64, payload_len: usize) -> Self {
+        let uid = unsafe { libc::getuid() } as u32;
+        let gid = unsafe { libc::getgid() } as u32;
+        let pid = std::process::id(); // u32
+
         Self {
             len: (std::mem::size_of::<FuseInHeader>() + payload_len) as u32,
             opcode,
             unique,
             nodeid,
-            uid: 0,
-            gid: 0,
-            pid: 0,
+            uid,
+            gid,
+            pid,
             padding: 0,
         }
     }

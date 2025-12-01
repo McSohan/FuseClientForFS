@@ -22,8 +22,12 @@ fn main() -> std::io::Result<()> {
     let mut proto = FuseProtocol::new(transport);
     let init = proto.send_init()?;
     println!("FUSE Initialized: major={} minor={}, congestion_threshold={}", init.major, init.minor, init.congestion_threshold);
-    println!("flags = {}, bg={}, readahead={}", init.flags, init.max_background, init.max_readahead);
-
+    // println!("flags = {}, bg={}, readahead={}", init.flags, init.max_background, init.max_readahead);
+    let entry = proto.lookup(1, "hello.txt")?;
+    println!("LOOKUP: nodeid={} size={}",
+        entry.nodeid,
+        entry.attr.size
+    );
 
     Ok(())
 }

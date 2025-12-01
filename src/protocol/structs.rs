@@ -57,3 +57,65 @@ impl FuseInitOut {
         Ok(out)
     }
 }
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct FuseAttr {
+    pub ino: u64,
+    pub size: u64,
+    pub blocks: u64,
+
+    pub atime: u64,
+    pub mtime: u64,
+    pub ctime: u64,
+
+    pub atimensec: u32,
+    pub mtimensec: u32,
+    pub ctimensec: u32,
+
+    pub mode: u32,
+    pub nlink: u32,
+    pub uid: u32,
+    pub gid: u32,
+    pub rdev: u32,
+    pub blksize: u32,
+    pub padding: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct FuseEntryOut {
+    pub nodeid: u64,
+    pub generation: u64,
+
+    pub entry_valid: u64,
+    pub attr_valid: u64,
+
+    pub entry_valid_nsec: u32,
+    pub attr_valid_nsec: u32,
+
+    pub attr: FuseAttr,
+}
+
+impl FuseEntryOut {
+    pub fn parse(buf: &[u8]) -> std::io::Result<Self> {
+        if buf.len() < std::mem::size_of::<Self>() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                format!(
+                    "fuse_entry_out too small: got {} expected {}",
+                    buf.len(),
+                    std::mem::size_of::<Self>()
+                ),
+            ));
+        }
+
+        let out = unsafe {
+            *(buf.as_ptr() as *const FuseEntryOut)
+        };
+
+        Ok(out)
+    }
+}
+
+
