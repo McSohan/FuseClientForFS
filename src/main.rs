@@ -26,6 +26,13 @@ fn main() -> std::io::Result<()> {
     let entry = proto.lookup(1, "hello.txt")?;
     println!("Found inode = {}", entry.nodeid);
 
+    let attr = proto.getattr(entry.nodeid)?;
+    println!("GETATTR: inode={} size={} mode={:o}",
+        attr.attr.ino,
+        attr.attr.size,
+        attr.attr.mode
+    );
+
     let open_out = proto.open(entry.nodeid, libc::O_RDONLY as u32)?;
     println!("FUSE_OPEN OK: fh={} flags={}",
         open_out.fh, open_out.open_flags

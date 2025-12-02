@@ -200,4 +200,55 @@ impl FuseReleaseIn {
     }
 }
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct FuseGetattrIn {
+    pub getattr_flags: u32,
+    pub dummy: u32,
+    pub fh: u64,
+}
+
+impl FuseGetattrIn {
+    pub fn new() -> Self {
+        Self {
+            getattr_flags: 0,
+            dummy: 0,
+            fh: 0,
+        }
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(
+                (self as *const Self) as *const u8,
+                std::mem::size_of::<Self>(),
+            )
+        }
+    }
+}
+
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct FuseAttrOut {
+    pub attr_valid: u64,
+    pub attr_valid_nsec: u32,
+    pub dummy: u32,
+    pub attr: FuseAttr,
+}
+
+impl FuseAttrOut {
+    pub fn parse(buf: &[u8]) -> std::io::Result<Self> {
+        if buf.len() < std::mem::size_of::<Self>() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                format!("FuseAttrOut too small: got {}", buf.len()),
+            ));
+        }
+        let out = unsafe { *(buf.as_ptr() as *const Self) };
+        Ok(out)
+    }
+}
+
+
 

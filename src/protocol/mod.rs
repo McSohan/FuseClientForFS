@@ -193,6 +193,25 @@ impl FuseProtocol {
         Ok(())
     }
 
+    pub fn getattr(&mut self, nodeid: u64)
+        -> std::io::Result<FuseAttrOut>
+    {
+        let inmsg = FuseGetattrIn::new();
+        let payload = inmsg.as_bytes();
+
+        let (hdr, resp) = self.send_request(FUSE_GETATTR, nodeid, payload)?;
+
+        if hdr.error != 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("GETATTR failed with error {}", hdr.error),
+            ));
+        }
+
+        let out = FuseAttrOut::parse(&resp)?;
+        Ok(out)
+    }
+
 
 }
 
