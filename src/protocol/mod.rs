@@ -10,15 +10,15 @@ mod structs;
 use self::headers::*;
 use self::opcodes::*;
 use self::structs::*;
-use crate::transport::unix_socket::FuseStream;
+use crate::transport::common::FuseTransport;
 
-pub struct FuseProtocol {
-    stream: FuseStream,
+pub struct FuseProtocol<T: FuseTransport> {
+    stream: T,
     next_unique: u64,
 }
 
-impl FuseProtocol {
-    pub fn new(stream: FuseStream) -> Self {
+impl<T: FuseTransport> FuseProtocol<T> {
+    pub fn new(stream: T) -> Self {
         Self {
             stream,
             next_unique: 2,
@@ -47,6 +47,11 @@ impl FuseProtocol {
         }
     }
 
+    /// Internal helper to send a FUSE request and receive its reply.
+    // fn send_and_recv(&mut self, req: &[u8]) -> io::Result<Vec<u8>> {
+    //     self.stream.roundtrip(req)
+    // }
+
     pub fn send_request(
         &mut self,
         opcode: u32,
@@ -57,15 +62,14 @@ impl FuseProtocol {
         let unique = self.alloc_unique();
         let header = FuseInHeader::new(opcode, nodeid, unique, payload.len());
 
-        // 2) Build the request buffer: header + payload
-        let mut msg = header.to_bytes();
-        msg.extend_from_slice(payload);
+        let header_bytes = bytemuck::bytes_of(&header);   // &[u8]
+        let payload = payload;                      // &[u8]
 
-        // 3) Send raw data
-        self.stream.send(&msg)?;
+        let mut msg = header_bytes.to_vec();              // Vec<u8>
+        msg.extend_from_slice(payload); 
 
-        // 4) Receive raw response
-        let raw = self.stream.recv_raw()?;
+        // 3) Send/recv raw data
+        let raw = self.stream.roundtrip(&msg)?;
 
         // 5) Parse fuse_out_header
         let (out_hdr, payload_bytes) = FuseOutHeader::parse(&raw)?;
@@ -84,7 +88,7 @@ impl FuseProtocol {
 
     pub fn send_init(&mut self) -> std::io::Result<FuseInitOut> {
         let init_in = FuseInitIn::new();
-        let payload = init_in.as_bytes();
+        let payload = bytemuck::bytes_of(&init_in);
 
         let (hdr, payload_bytes) = self.send_request(FUSE_INIT, 0, payload)?;
 
@@ -129,7 +133,7 @@ impl FuseProtocol {
 
     pub fn open(&mut self, nodeid: u64, flags: u32) -> std::io::Result<FuseOpenOut> {
         let input = FuseOpenIn::new(flags);
-        let payload = input.as_bytes();
+        let payload = bytemuck::bytes_of(&input);
 
         let (hdr, resp_payload) = self.send_request(FUSE_OPEN, nodeid, payload)?;
 
@@ -161,12 +165,7 @@ impl FuseProtocol {
             padding: 0,
         };
 
-        let payload = unsafe {
-            std::slice::from_raw_parts(
-                &req as *const _ as *const u8,
-                std::mem::size_of::<FuseReadIn>(),
-            )
-        };
+        let payload = bytemuck::bytes_of(&req);
 
         let (hdr, data) = self.send_request(FUSE_READ, nodeid, payload)?;
 
@@ -189,13 +188,8 @@ impl FuseProtocol {
             lock_owner: 0,
         };
 
-        // SAFELY reinterpret struct as bytes
-        let bytes = unsafe {
-            std::slice::from_raw_parts(
-                &release_in as *const FuseReleaseIn as *const u8,
-                std::mem::size_of::<FuseReleaseIn>(),
-            )
-        };
+        // SAFELY :) reinterpret struct as bytes
+        let bytes = bytemuck::bytes_of(&release_in);
 
         // Send request — reply has no payload
         let (hdr, _) = self.send_request(FUSE_RELEASE, inode, bytes)?;
@@ -212,7 +206,7 @@ impl FuseProtocol {
 
     pub fn getattr(&mut self, nodeid: u64) -> std::io::Result<FuseAttrOut> {
         let inmsg = FuseGetattrIn::new();
-        let payload = inmsg.as_bytes();
+        let payload = bytemuck::bytes_of(&inmsg);
 
         let (hdr, resp) = self.send_request(FUSE_GETATTR, nodeid, payload)?;
 
@@ -244,12 +238,7 @@ impl FuseProtocol {
             padding: 0,
         };
 
-        let payload = unsafe {
-            std::slice::from_raw_parts(
-                &req as *const FuseReadIn as *const u8,
-                std::mem::size_of::<FuseReadIn>(),
-            )
-        };
+        let payload = bytemuck::bytes_of(&req);
 
         let (hdr, data) = self.send_request(FUSE_READDIR, nodeid, payload)?;
 
@@ -268,11 +257,11 @@ impl FuseProtocol {
     }
 
     pub fn mkdir(&mut self, parent: u64, name: &str, mode: u32) -> std::io::Result<FuseEntryOut> {
-        // Step 1: build mkdir_in
+        // build mkdir_inn
         let mk = FuseMkdirIn::new(mode, 0);
+        let mut payload = bytemuck::bytes_of(&mk).to_vec();
 
-        // Step 2: build payload = mk | name\0
-        let mut payload = mk.as_bytes().to_vec();
+        //  build payload = mk | name\0
         payload.extend_from_slice(name.as_bytes());
         payload.push(0);
 
@@ -299,12 +288,7 @@ impl FuseProtocol {
             lock_owner: 0,
         };
 
-        let payload = unsafe {
-            std::slice::from_raw_parts(
-                &input as *const FuseReleaseIn as *const u8,
-                std::mem::size_of::<FuseReleaseIn>(),
-            )
-        };
+        let payload = bytemuck::bytes_of(&input);
 
         let (hdr, _) = self.send_request(FUSE_RELEASEDIR, nodeid, payload)?;
 
@@ -321,7 +305,7 @@ impl FuseProtocol {
     pub fn opendir(&mut self, nodeid: u64) -> std::io::Result<FuseOpenOut> {
         // OPENDIR uses FuseOpenIn exactly like OPEN
         let input = FuseOpenIn::new(libc::O_RDONLY as u32);
-        let payload = input.as_bytes();
+        let payload = bytemuck::bytes_of(&input);
 
         let (hdr, resp_payload) = self.send_request(FUSE_OPENDIR, nodeid, payload)?;
 

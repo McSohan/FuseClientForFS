@@ -1,6 +1,10 @@
+use bytemuck::{Pod, Zeroable};
+use bytemuck::try_from_bytes;
+use std::mem::size_of;
+
 // #[repr(C)] FUSE payload structs
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct FuseInitIn {
     pub major: u32,
     pub minor: u32,
@@ -18,18 +22,11 @@ impl FuseInitIn {
         }
     }
 
-    pub fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                (self as *const Self) as *const u8,
-                std::mem::size_of::<Self>(),
-            )
-        }
-    }
+
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct FuseInitOut {
     pub major: u32,
     pub minor: u32,
@@ -50,14 +47,14 @@ impl FuseInitOut {
             ));
         }
 
-        let out = unsafe { *(buf.as_ptr() as *const FuseInitOut) };
+        let out = bytemuck::from_bytes::<FuseInitOut>(&buf[..]);
 
-        Ok(out)
+        Ok(*out)
     }
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct FuseAttr {
     pub ino: u64,
     pub size: u64,
@@ -81,7 +78,7 @@ pub struct FuseAttr {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct FuseEntryOut {
     pub nodeid: u64,
     pub generation: u64,
@@ -108,14 +105,15 @@ impl FuseEntryOut {
             ));
         }
 
-        let out = unsafe { *(buf.as_ptr() as *const FuseEntryOut) };
+        let size = std::mem::size_of::<FuseEntryOut>();
+        let out = *bytemuck::from_bytes::<FuseEntryOut>(&buf[..size]);
 
         Ok(out)
     }
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct FuseOpenIn {
     pub flags: u32, // these will come from lbc -- O_RDONLY, O_WRONLY etc.
     pub unused: u32,
@@ -126,18 +124,10 @@ impl FuseOpenIn {
         Self { flags, unused: 0 }
     }
 
-    pub fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                (self as *const FuseOpenIn) as *const u8,
-                std::mem::size_of::<FuseOpenIn>(),
-            )
-        }
-    }
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct FuseOpenOut {
     pub fh: u64,
     pub open_flags: u32,
@@ -154,12 +144,12 @@ impl FuseOpenOut {
             ));
         }
 
-        Ok(unsafe { *(buf.as_ptr() as *const FuseOpenOut) })
+        Ok(*bytemuck::from_bytes::<FuseOpenOut>(&buf))
     }
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct FuseReadIn {
     pub fh: u64,
     pub offset: u64,
@@ -171,7 +161,7 @@ pub struct FuseReadIn {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct FuseReleaseIn {
     pub fh: u64,
     pub flags: u32,
@@ -180,6 +170,7 @@ pub struct FuseReleaseIn {
 }
 
 #[repr(C)]
+#[derive( Clone, Copy, Pod, Zeroable)]
 pub struct FuseMkdirIn {
     pub mode: u32,
     pub umask: u32,
@@ -190,35 +181,12 @@ impl FuseMkdirIn {
         Self { mode, umask }
     }
 
-    pub fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                (self as *const FuseMkdirIn) as *const u8,
-                std::mem::size_of::<FuseMkdirIn>(),
-            )
-        }
-    }
+    
 }
 
-// This impl is not required
-/*
-impl FuseReleaseIn {
-    pub fn parse(buf: &[u8]) -> std::io::Result<Self> {
-        if buf.len() < std::mem::size_of::<Self>() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
-                "FuseReleaseIn too small",
-            ));
-        }
-
-        let r = unsafe { *(buf.as_ptr() as *const FuseReleaseIn) };
-        Ok(r)
-    }
-}
-*/
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct FuseGetattrIn {
     pub getattr_flags: u32,
     pub dummy: u32,
@@ -233,19 +201,10 @@ impl FuseGetattrIn {
             fh: 0,
         }
     }
-
-    pub fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                (self as *const Self) as *const u8,
-                std::mem::size_of::<Self>(),
-            )
-        }
-    }
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct FuseAttrOut {
     pub attr_valid: u64,
     pub attr_valid_nsec: u32,
@@ -255,14 +214,25 @@ pub struct FuseAttrOut {
 
 impl FuseAttrOut {
     pub fn parse(buf: &[u8]) -> std::io::Result<Self> {
-        if buf.len() < std::mem::size_of::<Self>() {
+        let needed = std::mem::size_of::<Self>();
+
+        if buf.len() < needed {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
-                format!("FuseAttrOut too small: got {}", buf.len()),
+                format!("FuseAttrOut too small: got {}, need {}", buf.len(), needed),
             ));
         }
-        let out = unsafe { *(buf.as_ptr() as *const Self) };
-        Ok(out)
+
+        // Safe reinterpretation
+        let out: &Self = bytemuck::try_from_bytes(&buf[..needed])
+            .map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "FuseAttrOut not properly aligned or POD",
+                )
+            })?;
+
+        Ok(*out) // copy out
     }
 }
 
@@ -282,6 +252,9 @@ impl DirEntry {
         let mut entries = Vec::new();
         let mut pos = 0usize;
 
+        let U64 = size_of::<u64>();
+        let U32 = size_of::<u32>();
+
         // struct fuse_dirent {
         //   u64 ino;
         //   u64 off;
@@ -289,18 +262,28 @@ impl DirEntry {
         //   u32 type;
         //   char name[];
         // }  // then 8-byte aligned
-        const DIRENT_HDR_SIZE: usize = 8 + 8 + 4 + 4; // 24
+        let dirent_hdr_size: usize = U64 + U64 + U32 + U32; // 24
 
-        while pos + DIRENT_HDR_SIZE <= buf.len() {
-            let ino = u64::from_le_bytes(buf[pos..pos + 8].try_into().unwrap());
-            let off = u64::from_le_bytes(buf[pos + 8..pos + 16].try_into().unwrap());
-            let namelen = u32::from_le_bytes(buf[pos + 16..pos + 20].try_into().unwrap());
-            let typ = u32::from_le_bytes(buf[pos + 20..pos + 24].try_into().unwrap());
+        while pos + dirent_hdr_size <= buf.len() {
+            // ---- Read fixed header fields ----
+            let ino = u64::from_le_bytes(buf[pos..pos + U64].try_into().unwrap());
+            pos += U64;
 
-            let name_start = pos + DIRENT_HDR_SIZE;
+            let off = u64::from_le_bytes(buf[pos..pos + U64].try_into().unwrap());
+            pos += U64;
+
+            let namelen = u32::from_le_bytes(buf[pos..pos + U32].try_into().unwrap());
+            pos += U32;
+
+            let typ = u32::from_le_bytes(buf[pos..pos + U32].try_into().unwrap());
+            pos += U32;
+
+            // Now pos = start of the name field
+            let name_start = pos;
             let name_end = name_start + namelen as usize;
+
             if name_end > buf.len() {
-                break;
+                break; // corrupted / truncated entry
             }
 
             let name = String::from_utf8_lossy(&buf[name_start..name_end]).to_string();
@@ -313,9 +296,14 @@ impl DirEntry {
                 name,
             });
 
-            // FUSE_DIRENT_ALIGN(DIRENT_HDR_SIZE + namelen)
-            let rec_len = (DIRENT_HDR_SIZE + namelen as usize + 7) & !7;
-            pos += rec_len;
+            pos = name_end;
+
+            // ---- Record alignment ----
+            // rec_len = ALIGN( hdr_size + namelen )
+            let rec_len = (dirent_hdr_size + namelen as usize + 7) & !7;
+
+            pos = pos - dirent_hdr_size; // rewind to start of this record
+            pos += rec_len; // skip whole aligned record
         }
 
         Ok(entries)

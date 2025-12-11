@@ -1,9 +1,12 @@
+use std::io;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::{
     fs,
     io::{Read, Write},
     path::Path,
 };
+
+use crate::transport::common::FuseTransport;
 
 pub struct FuseListener {
     listener: UnixListener,
@@ -47,5 +50,12 @@ impl FuseStream {
         self.stream.read_exact(&mut buf[4..])?;
 
         Ok(buf)
+    }
+}
+
+impl FuseTransport for FuseStream {
+    fn roundtrip(&mut self, req: &[u8]) -> io::Result<Vec<u8>> {
+        self.send(req)?;
+        self.recv_raw()
     }
 }

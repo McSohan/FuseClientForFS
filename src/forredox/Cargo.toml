@@ -1,0 +1,11 @@
+[package]
+name = "virtiofs"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "virtiofs_scheme"
+path = "src/scheme.rs"
+
+[dependencies]
+redox_syscall = "^0.2.6"

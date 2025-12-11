@@ -1,14 +1,15 @@
 use std::io::{self, Write};
 
+use crate::transport::common::FuseTransport;
 use crate::virtiofs::VirtioFsImpl;
 use crate::virtiofs::structs::FileStat;
 
-pub struct FuseShell {
-    vfs: VirtioFsImpl,
+pub struct FuseShell<T: FuseTransport> {
+    vfs: VirtioFsImpl<T>,
 }
 
-impl FuseShell {
-    pub fn new(vfs: VirtioFsImpl) -> Self {
+impl<T: FuseTransport> FuseShell<T> {
+    pub fn new(vfs: VirtioFsImpl<T>) -> Self {
         Self { vfs }
     }
 

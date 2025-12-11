@@ -5,17 +5,18 @@ use std::path::PathBuf;
 
 use self::structs::{DirEntryInfo, Fd, FileStat, OpenFile};
 use crate::protocol::FuseProtocol;
+use crate::transport::common::FuseTransport;
 
-pub struct VirtioFsImpl {
-    proto: FuseProtocol,
+pub struct VirtioFsImpl<T: FuseTransport> {
+    proto: FuseProtocol<T>,
     cwd_inode: u64,
     cwd_path: PathBuf,
     next_fd: Fd,
     open_files: HashMap<Fd, OpenFile>,
 }
 
-impl VirtioFsImpl {
-    pub fn new(proto: FuseProtocol) -> Self {
+impl<T: FuseTransport> VirtioFsImpl<T> {
+    pub fn new(proto: FuseProtocol<T>) -> Self {
         Self {
             proto,
             cwd_inode: 1, // root inode in your FS
@@ -29,15 +30,15 @@ impl VirtioFsImpl {
         &self.cwd_path
     }
 
-    // Should this be public??!!
-    pub fn resolve_path(&mut self, path: &str) -> std::io::Result<u64> {
+    // This shouldnt be public, right??!
+    fn resolve_path(&mut self, path: &str) -> std::io::Result<u64> {
         let mut inode = if path.starts_with('/') {
             1
         } else {
             self.cwd_inode
         };
 
-        let p = if path.is_empty() { "." } else { path };
+        let p: &str = if path.is_empty() { "." } else { path };
 
         for comp in std::path::Path::new(p).components() {
             use std::path::Component;

@@ -1,5 +1,7 @@
+use bytemuck::{Pod, Zeroable};
+
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct FuseInHeader {
     pub len: u32,
     pub opcode: u32,
@@ -29,19 +31,10 @@ impl FuseInHeader {
         }
     }
 
-    pub fn to_bytes(&self) -> Vec<u8> {
-        unsafe {
-            std::slice::from_raw_parts(
-                (self as *const Self) as *const u8,
-                std::mem::size_of::<Self>(),
-            )
-            .to_vec()
-        }
-    }
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct FuseOutHeader {
     pub len: u32,
     pub error: i32,
@@ -57,7 +50,7 @@ impl FuseOutHeader {
             ));
         }
 
-        let hdr = unsafe { *(buf.as_ptr() as *const FuseOutHeader) };
+        let hdr = *bytemuck::from_bytes::<FuseOutHeader>(&buf[..std::mem::size_of::<FuseOutHeader>()]);
 
         let payload = &buf[std::mem::size_of::<Self>()..hdr.len as usize];
         Ok((hdr, payload))
