@@ -1,0 +1,3 @@
+[[driver]]
+name = "virtiofsd"
+device = { vendor_id = "1af4", device_id = "001A" } // virtio-fs device

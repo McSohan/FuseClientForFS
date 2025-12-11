@@ -34,16 +34,21 @@ impl<T: FuseTransport> FuseShell<T> {
 
             match cmd {
                 "ls" => {
-                    /*if args.len() == 1 && args[0] == "-l" {
-                        if let Err(e) = self.cmd_ls_l() {
-                            eprintln!("ls -l: {}", e);
-                        }
-                    } else*/
-                    {
-                        let path = if args.is_empty() { "." } else { args[0] };
-                        if let Err(e) = self.cmd_ls(path) {
-                            eprintln!("ls: {}", e);
-                        }
+                    let long = args.contains(&"-l");
+                    let path = args
+                        .iter()
+                        .find(|a| !a.starts_with('-'))
+                        .copied()
+                        .unwrap_or(".");
+
+                    let res = if long {
+                        self.cmd_ls_long(path)
+                    } else {
+                        self.cmd_ls_short(path)
+                    };
+
+                    if let Err(e) = res {
+                        eprintln!("ls: {}", e);
                     }
                 }
 
@@ -64,13 +69,8 @@ impl<T: FuseTransport> FuseShell<T> {
                     }
                     let path = args[0];
                     match self.vfs.stat(path) {
-                        Ok(st) => {
-                            self.cmd_stat(st);
-                        }
-
-                        Err(e) => {
-                            eprintln!("stat: {}", e);
-                        }
+                        Ok(st) => self.cmd_stat(st),
+                        Err(e) => eprintln!("stat: {}", e),
                     }
                 }
 
@@ -106,22 +106,10 @@ impl<T: FuseTransport> FuseShell<T> {
         Ok(())
     }
 
+    /* ---------------------------------------------------------------------
+    stat formatting
+    --------------------------------------------------------------------- */
     fn cmd_stat(&self, st: FileStat) -> () {
-        use std::time::{Duration, UNIX_EPOCH};
-
-        // File type
-        let ftype = match st.mode & libc::S_IFMT {
-            libc::S_IFREG => "regular file",
-            libc::S_IFDIR => "directory",
-            libc::S_IFLNK => "symbolic link",
-            libc::S_IFCHR => "character device",
-            libc::S_IFBLK => "block device",
-            libc::S_IFIFO => "FIFO/pipe",
-            libc::S_IFSOCK => "socket",
-            _ => "unknown",
-        };
-
-        // Permissions rwxr-xr-x
         fn mode_to_string(mode: u32) -> String {
             let mut s = String::new();
             let perms = [
@@ -141,14 +129,29 @@ impl<T: FuseTransport> FuseShell<T> {
             s
         }
 
-        let perm_string = mode_to_string(st.mode);
-
-        // Timestamp formatter
         fn fmt_time(sec: u64, nsec: u32) -> String {
-            let ts = UNIX_EPOCH + Duration::new(sec, nsec);
-            let dt: chrono::DateTime<chrono::Local> = ts.into();
-            dt.format("%Y-%m-%d %H:%M:%S.%f").to_string()
+            use chrono::{DateTime, Local, LocalResult, TimeZone};
+
+            let dt: DateTime<Local> = match Local.timestamp_opt(sec as i64, nsec) {
+                LocalResult::Single(t) => t,
+                _ => Local.timestamp_opt(0, 0).unwrap(),
+            };
+
+            dt.format("%Y-%m-%d %H:%M:%S").to_string()
         }
+
+        let ftype = match st.mode & libc::S_IFMT {
+            libc::S_IFREG => "regular file",
+            libc::S_IFDIR => "directory",
+            libc::S_IFLNK => "symbolic link",
+            libc::S_IFCHR => "character device",
+            libc::S_IFBLK => "block device",
+            libc::S_IFIFO => "FIFO/pipe",
+            libc::S_IFSOCK => "socket",
+            _ => "unknown",
+        };
+
+        let perm_string = mode_to_string(st.mode);
 
         println!(
             "  Size: {:<10} Blocks: {:<10} IO Block: {}",
@@ -171,17 +174,132 @@ impl<T: FuseTransport> FuseShell<T> {
         println!("Type: {}", ftype);
     }
 
-    fn cmd_ls(&mut self, path: &str) -> std::io::Result<()> {
-        let entries = self.vfs.readdir(path)?;
-        for e in entries {
-            println!("{}", e.name);
+    /* ---------------------------------------------------------------------
+    ls (short): behaves like ls [path]
+    --------------------------------------------------------------------- */
+    fn cmd_ls_short(&mut self, path: &str) -> std::io::Result<()> {
+        // First, stat the path to see if it is a file or directory.
+        let st = self.vfs.stat(path)?;
+
+        if (st.mode & libc::S_IFMT) == libc::S_IFDIR {
+            // Directory -> list contents.
+            let entries = self.vfs.readdir(path)?;
+            for e in entries {
+                println!("{}", e.name);
+            }
+        } else {
+            // Regular file (or other non-dir) -> just print the path itself.
+            println!("{}", path);
         }
+
         Ok(())
     }
 
+    /* ---------------------------------------------------------------------
+    ls -l
+    --------------------------------------------------------------------- */
+    fn cmd_ls_long(&mut self, path: &str) -> std::io::Result<()> {
+        // Determine if path is file or directory.
+        let st = self.vfs.stat(path)?;
+
+        if (st.mode & libc::S_IFMT) != libc::S_IFDIR {
+            // It's a single file: print one long line.
+            let mode_str = Self::format_mode(st.mode);
+            let time = Self::format_time(st.mtime);
+
+            println!(
+                "{} {:>2} {:>4} {:>4} {:>8} {} {}",
+                mode_str, st.nlink, st.uid, st.gid, st.size, time, path
+            );
+            return Ok(());
+        }
+
+        // Directory: list entries.
+        let entries = self.vfs.readdir(path)?;
+
+        for e in entries {
+            // Build a path string for stat() that respects ".", "/", and subdirs.
+            let full_path = if path == "." {
+                e.name.clone()
+            } else if path == "/" {
+                format!("/{}", e.name)
+            } else {
+                format!("{}/{}", path.trim_end_matches('/'), e.name)
+            };
+
+            match self.vfs.stat(&full_path) {
+                Ok(st) => {
+                    let mode_str = Self::format_mode(st.mode);
+                    let time = Self::format_time(st.mtime);
+
+                    println!(
+                        "{} {:>2} {:>4} {:>4} {:>8} {} {}",
+                        mode_str, st.nlink, st.uid, st.gid, st.size, time, e.name
+                    );
+                }
+                Err(err) => {
+                    // Do not abort the whole listing just because one entry fails.
+                    eprintln!("ls -l: {}: {}", full_path, err);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /* --- helpers for ls -l --- */
+
+    fn format_mode(mode: u32) -> String {
+        let ftype = match mode & libc::S_IFMT {
+            libc::S_IFDIR => 'd',
+            libc::S_IFLNK => 'l',
+            libc::S_IFREG => '-',
+            libc::S_IFCHR => 'c',
+            libc::S_IFBLK => 'b',
+            libc::S_IFIFO => 'p',
+            libc::S_IFSOCK => 's',
+            _ => '?',
+        };
+
+        let perms = [
+            (libc::S_IRUSR, 'r'),
+            (libc::S_IWUSR, 'w'),
+            (libc::S_IXUSR, 'x'),
+            (libc::S_IRGRP, 'r'),
+            (libc::S_IWGRP, 'w'),
+            (libc::S_IXGRP, 'x'),
+            (libc::S_IROTH, 'r'),
+            (libc::S_IWOTH, 'w'),
+            (libc::S_IXOTH, 'x'),
+        ];
+
+        let mut s = String::with_capacity(10);
+        s.push(ftype);
+
+        for (bit, ch) in perms {
+            s.push(if mode & bit != 0 { ch } else { '-' });
+        }
+
+        s
+    }
+
+    fn format_time(secs: u64) -> String {
+        use chrono::{DateTime, Local, LocalResult, TimeZone};
+
+        let dt: DateTime<Local> = match Local.timestamp_opt(secs as i64, 0) {
+            LocalResult::Single(t) => t,
+            _ => Local.timestamp_opt(0, 0).unwrap(),
+        };
+
+        dt.format("%b %d %H:%M").to_string()
+    }
+
+    /* ---------------------------------------------------------------------
+    cat
+    --------------------------------------------------------------------- */
     fn cmd_cat(&mut self, path: &str) -> std::io::Result<()> {
         let fd = self.vfs.open(path, libc::O_RDONLY as u32)?;
-        let data = self.vfs.read(fd, 64 * 1024)?; // read whole file; your FS is tiny
+        let data = self.vfs.read(fd, 64 * 1024)?;
         self.vfs.close(fd)?;
         print!("{}", String::from_utf8_lossy(&data));
         Ok(())

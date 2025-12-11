@@ -1,5 +1,5 @@
-use bytemuck::{Pod, Zeroable};
 use bytemuck::try_from_bytes;
+use bytemuck::{Pod, Zeroable};
 use std::mem::size_of;
 
 // #[repr(C)] FUSE payload structs
@@ -21,8 +21,6 @@ impl FuseInitIn {
             flags: 0, // No flags requested
         }
     }
-
-
 }
 
 #[repr(C)]
@@ -123,7 +121,6 @@ impl FuseOpenIn {
     pub fn new(flags: u32) -> Self {
         Self { flags, unused: 0 }
     }
-
 }
 
 #[repr(C)]
@@ -170,7 +167,7 @@ pub struct FuseReleaseIn {
 }
 
 #[repr(C)]
-#[derive( Clone, Copy, Pod, Zeroable)]
+#[derive(Clone, Copy, Pod, Zeroable)]
 pub struct FuseMkdirIn {
     pub mode: u32,
     pub umask: u32,
@@ -180,10 +177,7 @@ impl FuseMkdirIn {
     pub fn new(mode: u32, umask: u32) -> Self {
         Self { mode, umask }
     }
-
-    
 }
-
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
@@ -224,13 +218,12 @@ impl FuseAttrOut {
         }
 
         // Safe reinterpretation
-        let out: &Self = bytemuck::try_from_bytes(&buf[..needed])
-            .map_err(|_| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "FuseAttrOut not properly aligned or POD",
-                )
-            })?;
+        let out: &Self = bytemuck::try_from_bytes(&buf[..needed]).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "FuseAttrOut not properly aligned or POD",
+            )
+        })?;
 
         Ok(*out) // copy out
     }

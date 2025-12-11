@@ -30,7 +30,6 @@ impl FuseInHeader {
             padding: 0,
         }
     }
-
 }
 
 #[repr(C)]
@@ -50,7 +49,8 @@ impl FuseOutHeader {
             ));
         }
 
-        let hdr = *bytemuck::from_bytes::<FuseOutHeader>(&buf[..std::mem::size_of::<FuseOutHeader>()]);
+        let hdr =
+            *bytemuck::from_bytes::<FuseOutHeader>(&buf[..std::mem::size_of::<FuseOutHeader>()]);
 
         let payload = &buf[std::mem::size_of::<Self>()..hdr.len as usize];
         Ok((hdr, payload))

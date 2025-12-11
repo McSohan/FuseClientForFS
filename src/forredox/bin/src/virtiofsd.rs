@@ -7,8 +7,8 @@
 //  4. Construct VirtiofsScheme<FuseTransport>.
 //  5. Register scheme + event handle and enter event loop, similar to virtio-netd.
 
-mod scheme;      // your VirtiofsScheme
-mod protocol;    // your FuseProtocol<T>
+mod scheme;      
+mod protocol;    
 mod transport;   // contains VirtioFsTransport
 mod virtiofs;    // resource types etc.
 
@@ -73,7 +73,7 @@ fn daemon(daemon: Daemon) -> Result<(), Box<dyn std::error::Error>> {
 
     // 5. Create a scheme socket bound to this name.
     //
-    // This is the part where you mirror the pattern from redoxfs mount code.
+    // This is the part where we mirror the pattern from redoxfs mount code.
     // The exact constructor may differ, so treat this as a structural template:
     let socket = Socket::create(&scheme_name, daemon.clone())
         .expect("virtiofsd: failed to create scheme socket");

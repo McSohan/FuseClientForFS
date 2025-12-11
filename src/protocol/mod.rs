@@ -62,11 +62,11 @@ impl<T: FuseTransport> FuseProtocol<T> {
         let unique = self.alloc_unique();
         let header = FuseInHeader::new(opcode, nodeid, unique, payload.len());
 
-        let header_bytes = bytemuck::bytes_of(&header);   // &[u8]
-        let payload = payload;                      // &[u8]
+        let header_bytes = bytemuck::bytes_of(&header); // &[u8]
+        let payload = payload; // &[u8]
 
-        let mut msg = header_bytes.to_vec();              // Vec<u8>
-        msg.extend_from_slice(payload); 
+        let mut msg = header_bytes.to_vec(); // Vec<u8>
+        msg.extend_from_slice(payload);
 
         // 3) Send/recv raw data
         let raw = self.stream.roundtrip(&msg)?;

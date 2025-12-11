@@ -1,0 +1,17 @@
+[package]
+name = "virtiofs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+alloc = { package = "alloc", default-features = false }
+common = { path = "../common" }
+pcid_interface = { path = "../pcid_interface" }
+syscall = { path = "../syscall" }
+redox_syscall = { version = "0.3", optional = true }
+
+virtio_core = { path = "../virtio_core" }
+futures = "0.3"
+
+[features]
+default = []

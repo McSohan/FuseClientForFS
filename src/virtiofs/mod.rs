@@ -30,6 +30,31 @@ impl<T: FuseTransport> VirtioFsImpl<T> {
         &self.cwd_path
     }
 
+    pub fn stat_inode(&mut self, inode: u64) -> std::io::Result<FileStat> {
+        let attr_out = self.proto.getattr(inode)?;
+        let a = attr_out.attr;
+
+        Ok(FileStat {
+            inode,
+            size: a.size,
+            mode: a.mode,
+            nlink: a.nlink,
+            uid: a.uid,
+            gid: a.gid,
+
+            blocks: a.blocks,
+            blksize: a.blksize,
+            rdev: a.rdev,
+
+            atime: a.atime,
+            atime_nsec: a.atimensec,
+            mtime: a.mtime,
+            mtime_nsec: a.mtimensec,
+            ctime: a.ctime,
+            ctime_nsec: a.ctimensec,
+        })
+    }
+
     // This shouldnt be public, right??!
     fn resolve_path(&mut self, path: &str) -> std::io::Result<u64> {
         let mut inode = if path.starts_with('/') {
