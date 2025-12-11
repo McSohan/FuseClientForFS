@@ -1,4 +1,4 @@
-mod structs;
+pub mod structs;
 
 use std::collections::HashMap;
 use std::path::PathBuf;

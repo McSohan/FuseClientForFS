@@ -1,6 +1,7 @@
 use std::io::{self, Write};
 
 use crate::virtiofs::VirtioFsImpl;
+use crate::virtiofs::structs::FileStat;
 
 pub struct FuseShell {
     vfs: VirtioFsImpl,
@@ -63,69 +64,7 @@ impl FuseShell {
                     let path = args[0];
                     match self.vfs.stat(path) {
                         Ok(st) => {
-                            use std::time::{Duration, UNIX_EPOCH};
-
-                            // File type
-                            let ftype = match st.mode & libc::S_IFMT {
-                                libc::S_IFREG => "regular file",
-                                libc::S_IFDIR => "directory",
-                                libc::S_IFLNK => "symbolic link",
-                                libc::S_IFCHR => "character device",
-                                libc::S_IFBLK => "block device",
-                                libc::S_IFIFO => "FIFO/pipe",
-                                libc::S_IFSOCK => "socket",
-                                _ => "unknown",
-                            };
-
-                            // Permissions rwxr-xr-x
-                            fn mode_to_string(mode: u32) -> String {
-                                let mut s = String::new();
-                                let perms = [
-                                    (libc::S_IRUSR, 'r'),
-                                    (libc::S_IWUSR, 'w'),
-                                    (libc::S_IXUSR, 'x'),
-                                    (libc::S_IRGRP, 'r'),
-                                    (libc::S_IWGRP, 'w'),
-                                    (libc::S_IXGRP, 'x'),
-                                    (libc::S_IROTH, 'r'),
-                                    (libc::S_IWOTH, 'w'),
-                                    (libc::S_IXOTH, 'x'),
-                                ];
-                                for &(bit, ch) in &perms {
-                                    s.push(if mode & bit != 0 { ch } else { '-' });
-                                }
-                                s
-                            }
-
-                            let perm_string = mode_to_string(st.mode);
-
-                            // Timestamp formatter
-                            fn fmt_time(sec: u64, nsec: u32) -> String {
-                                let ts = UNIX_EPOCH + Duration::new(sec, nsec);
-                                let dt: chrono::DateTime<chrono::Local> = ts.into();
-                                dt.format("%Y-%m-%d %H:%M:%S.%f").to_string()
-                            }
-
-                            println!("  File: {}", path);
-                            println!(
-                                "  Size: {:<10} Blocks: {:<10} IO Block: {}",
-                                st.size, st.blocks, st.blksize
-                            );
-                            println!(
-                                "Device: {} Inode: {}  Links: {}",
-                                st.rdev, st.inode, st.nlink
-                            );
-                            println!(
-                                "Access: ({:o}/{})  Uid: {}  Gid: {}",
-                                st.mode & 0o7777,
-                                perm_string,
-                                st.uid,
-                                st.gid
-                            );
-                            println!("Access: {}", fmt_time(st.atime, st.atime_nsec));
-                            println!("Modify: {}", fmt_time(st.mtime, st.mtime_nsec));
-                            println!("Change: {}", fmt_time(st.ctime, st.ctime_nsec));
-                            println!("Type: {}", ftype);
+                            self.cmd_stat(st);
                         }
 
                         Err(e) => {
@@ -166,39 +105,70 @@ impl FuseShell {
         Ok(())
     }
 
-    // fn lookup_name(&mut self, name: &str) -> io::Result<u64> {
-    //     let nodeid = self.vfs.resolve_path(name)?;
-    //     Ok(nodeid)
-    // }
+    fn cmd_stat(&self, st: FileStat) -> () {
+        use std::time::{Duration, UNIX_EPOCH};
 
-    // fn format_mode(mode: u32) -> String {
-    //     let mut s = String::new();
+        // File type
+        let ftype = match st.mode & libc::S_IFMT {
+            libc::S_IFREG => "regular file",
+            libc::S_IFDIR => "directory",
+            libc::S_IFLNK => "symbolic link",
+            libc::S_IFCHR => "character device",
+            libc::S_IFBLK => "block device",
+            libc::S_IFIFO => "FIFO/pipe",
+            libc::S_IFSOCK => "socket",
+            _ => "unknown",
+        };
 
-    //     let bits = [
-    //         (libc::S_IRUSR, 'r'),
-    //         (libc::S_IWUSR, 'w'),
-    //         (libc::S_IXUSR, 'x'),
-    //         (libc::S_IRGRP, 'r'),
-    //         (libc::S_IWGRP, 'w'),
-    //         (libc::S_IXGRP, 'x'),
-    //         (libc::S_IROTH, 'r'),
-    //         (libc::S_IWOTH, 'w'),
-    //         (libc::S_IXOTH, 'x'),
-    //     ];
+        // Permissions rwxr-xr-x
+        fn mode_to_string(mode: u32) -> String {
+            let mut s = String::new();
+            let perms = [
+                (libc::S_IRUSR, 'r'),
+                (libc::S_IWUSR, 'w'),
+                (libc::S_IXUSR, 'x'),
+                (libc::S_IRGRP, 'r'),
+                (libc::S_IWGRP, 'w'),
+                (libc::S_IXGRP, 'x'),
+                (libc::S_IROTH, 'r'),
+                (libc::S_IWOTH, 'w'),
+                (libc::S_IXOTH, 'x'),
+            ];
+            for &(bit, ch) in &perms {
+                s.push(if mode & bit != 0 { ch } else { '-' });
+            }
+            s
+        }
 
-    //     for (bit, ch) in bits.iter() {
-    //         s.push(if mode & bit != 0 { *ch } else { '-' });
-    //     }
+        let perm_string = mode_to_string(st.mode);
 
-    //     s
-    // }
+        // Timestamp formatter
+        fn fmt_time(sec: u64, nsec: u32) -> String {
+            let ts = UNIX_EPOCH + Duration::new(sec, nsec);
+            let dt: chrono::DateTime<chrono::Local> = ts.into();
+            dt.format("%Y-%m-%d %H:%M:%S.%f").to_string()
+        }
 
-    // fn format_time(sec: u64, nsec: u32) -> String {
-    //     use chrono::{Local, TimeZone};
-
-    //     let dt = Local.timestamp_opt(sec as i64, nsec).unwrap();
-    //     dt.format("%Y-%m-%d %H:%M").to_string()
-    // }
+        println!(
+            "  Size: {:<10} Blocks: {:<10} IO Block: {}",
+            st.size, st.blocks, st.blksize
+        );
+        println!(
+            "Device: {} Inode: {}  Links: {}",
+            st.rdev, st.inode, st.nlink
+        );
+        println!(
+            "Access: ({:o}/{})  Uid: {}  Gid: {}",
+            st.mode & 0o7777,
+            perm_string,
+            st.uid,
+            st.gid
+        );
+        println!("Access: {}", fmt_time(st.atime, st.atime_nsec));
+        println!("Modify: {}", fmt_time(st.mtime, st.mtime_nsec));
+        println!("Change: {}", fmt_time(st.ctime, st.ctime_nsec));
+        println!("Type: {}", ftype);
+    }
 
     fn cmd_ls(&mut self, path: &str) -> std::io::Result<()> {
         let entries = self.vfs.readdir(path)?;
@@ -206,40 +176,6 @@ impl FuseShell {
             println!("{}", e.name);
         }
         Ok(())
-    }
-
-    fn cmd_mkdir(&mut self, name: &str) -> std::io::Result<()> {
-        // Basic validation
-        if name.contains('/') {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "mkdir: simple names only",
-            ));
-        }
-
-        // Use standard directory mode
-        let mode = libc::S_IFDIR as u32 | 0o755;
-
-        match self.vfs.mkdir(name, mode) {
-            Ok(_) => {
-                println!("created directory {} (mode {})", name, mode);
-                Ok(())
-            }
-            Err(e) => {
-                // interpret common FUSE errno responses
-                if let Some(code) = e.raw_os_error() {
-                    match code {
-                        libc::EROFS => eprintln!("mkdir: read-only filesystem"),
-                        libc::EEXIST => eprintln!("mkdir: file exists"),
-                        libc::ENOENT => eprintln!("mkdir: parent does not exist"),
-                        _ => eprintln!("mkdir: error {}", code),
-                    }
-                } else {
-                    eprintln!("mkdir: {}", e);
-                }
-                Ok(()) // <-- DO NOT EXIT SHELL
-            }
-        }
     }
 
     fn cmd_cat(&mut self, path: &str) -> std::io::Result<()> {
