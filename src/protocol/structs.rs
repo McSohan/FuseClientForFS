@@ -179,6 +179,29 @@ pub struct FuseReleaseIn {
     pub lock_owner: u64,
 }
 
+#[repr(C)]
+pub struct FuseMkdirIn {
+    pub mode: u32,
+    pub umask: u32,
+}
+
+impl FuseMkdirIn {
+    pub fn new(mode: u32, umask: u32) -> Self {
+        Self { mode, umask }
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(
+                (self as *const FuseMkdirIn) as *const u8,
+                std::mem::size_of::<FuseMkdirIn>(),
+            )
+        }
+    }
+}
+
+// This impl is not required
+/*
 impl FuseReleaseIn {
     pub fn parse(buf: &[u8]) -> std::io::Result<Self> {
         if buf.len() < std::mem::size_of::<Self>() {
@@ -192,6 +215,7 @@ impl FuseReleaseIn {
         Ok(r)
     }
 }
+*/
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -242,6 +266,8 @@ impl FuseAttrOut {
     }
 }
 
+use std::io;
+
 #[derive(Debug)]
 pub struct DirEntry {
     pub ino: u64,
@@ -252,11 +278,18 @@ pub struct DirEntry {
 }
 
 impl DirEntry {
-    pub fn parse_dirents(buf: &[u8]) -> std::io::Result<Vec<DirEntry>> {
+    pub fn parse_dirents(buf: &[u8]) -> io::Result<Vec<DirEntry>> {
         let mut entries = Vec::new();
         let mut pos = 0usize;
 
-        const DIRENT_HDR_SIZE: usize = 8 + 8 + 4 + 4;
+        // struct fuse_dirent {
+        //   u64 ino;
+        //   u64 off;
+        //   u32 namelen;
+        //   u32 type;
+        //   char name[];
+        // }  // then 8-byte aligned
+        const DIRENT_HDR_SIZE: usize = 8 + 8 + 4 + 4; // 24
 
         while pos + DIRENT_HDR_SIZE <= buf.len() {
             let ino = u64::from_le_bytes(buf[pos..pos + 8].try_into().unwrap());
@@ -266,13 +299,11 @@ impl DirEntry {
 
             let name_start = pos + DIRENT_HDR_SIZE;
             let name_end = name_start + namelen as usize;
-
             if name_end > buf.len() {
                 break;
             }
 
-            let name =
-                String::from_utf8_lossy(&buf[name_end - namelen as usize..name_end]).to_string();
+            let name = String::from_utf8_lossy(&buf[name_start..name_end]).to_string();
 
             entries.push(DirEntry {
                 ino,
@@ -282,6 +313,7 @@ impl DirEntry {
                 name,
             });
 
+            // FUSE_DIRENT_ALIGN(DIRENT_HDR_SIZE + namelen)
             let rec_len = (DIRENT_HDR_SIZE + namelen as usize + 7) & !7;
             pos += rec_len;
         }

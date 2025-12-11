@@ -6,6 +6,7 @@ use std::path::Path;
 use fuse_client_for_fs::protocol::FuseProtocol;
 use fuse_client_for_fs::shell::commands::FuseShell;
 use fuse_client_for_fs::transport::unix_socket::FuseListener;
+use fuse_client_for_fs::virtiofs::VirtioFsImpl;
 
 /**
 fn main() -> std::io::Result<()> {
@@ -67,7 +68,11 @@ fn main() -> std::io::Result<()> {
     );
     println!("FUSE Init complete, entering shell…");
 
-    let mut sh = FuseShell::new(proto)?;
+    let vfs = VirtioFsImpl::new(proto);
+
+    let mut sh = FuseShell::new(vfs);
+
+    //let mut sh = FuseShell::new(proto)?;
     sh.run()?;
 
     Ok(())

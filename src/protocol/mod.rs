@@ -31,6 +31,22 @@ impl FuseProtocol {
         u
     }
 
+    fn errno_name(code: i32) -> &'static str {
+        match code {
+            libc::ENOENT => "ENOENT (No such file or directory)",
+            libc::EACCES => "EACCES (Permission denied)",
+            libc::EEXIST => "EEXIST (File exists)",
+            libc::ENOSYS => "ENOSYS (Function not implemented)",
+            libc::EROFS => "EROFS (Read-only filesystem)",
+            libc::ENOTDIR => "ENOTDIR (Not a directory)",
+            libc::EISDIR => "EISDIR (Is a directory)",
+            libc::EINVAL => "EINVAL (Invalid argument)",
+            libc::EPERM => "EPERM (Operation not permitted)",
+            libc::ENOTEMPTY => "ENOTEMPTY (Directory not empty)",
+            _ => "Unknown error",
+        }
+    }
+
     pub fn send_request(
         &mut self,
         opcode: u32,
@@ -53,6 +69,14 @@ impl FuseProtocol {
 
         // 5) Parse fuse_out_header
         let (out_hdr, payload_bytes) = FuseOutHeader::parse(&raw)?;
+
+        if out_hdr.error != 0 {
+            let errno = -out_hdr.error;
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("{} ({})", Self::errno_name(errno), errno),
+            ));
+        }
 
         // 6) Return header + payload
         Ok((out_hdr, payload_bytes.to_vec()))
@@ -201,6 +225,97 @@ impl FuseProtocol {
 
         let out = FuseAttrOut::parse(&resp)?;
         Ok(out)
+    }
+
+    pub fn readdir(
+        &mut self,
+        nodeid: u64,
+        fh: u64,
+        offset: u64,
+        size: u32,
+    ) -> std::io::Result<Vec<DirEntry>> {
+        let req = FuseReadIn {
+            fh,
+            offset,
+            size,
+            read_flags: 0,
+            lock_owner: 0,
+            flags: 0,
+            padding: 0,
+        };
+
+        let payload = unsafe {
+            std::slice::from_raw_parts(
+                &req as *const FuseReadIn as *const u8,
+                std::mem::size_of::<FuseReadIn>(),
+            )
+        };
+
+        let (hdr, data) = self.send_request(FUSE_READDIR, nodeid, payload)?;
+
+        if hdr.error != 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("READDIR failed: {}", hdr.error),
+            ));
+        }
+
+        if data.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        DirEntry::parse_dirents(&data)
+    }
+
+    pub fn mkdir(&mut self, parent: u64, name: &str, mode: u32) -> std::io::Result<FuseEntryOut> {
+        // Step 1: build mkdir_in
+        let mk = FuseMkdirIn::new(mode, 0);
+
+        // Step 2: build payload = mk | name\0
+        let mut payload = mk.as_bytes().to_vec();
+        payload.extend_from_slice(name.as_bytes());
+        payload.push(0);
+
+        // Step 3: send
+        let (hdr, resp) = self.send_request(FUSE_MKDIR, parent, &payload)?;
+
+        if hdr.error != 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("MKDIR failed with error {}", hdr.error),
+            ));
+        }
+
+        // Step 4: parse entry
+        let entry = FuseEntryOut::parse(&resp)?;
+        Ok(entry)
+    }
+
+    pub fn releasedir(&mut self, nodeid: u64, fh: u64) -> std::io::Result<()> {
+        let input = FuseReleaseIn {
+            fh,
+            flags: 0,
+            release_flags: 0,
+            lock_owner: 0,
+        };
+
+        let payload = unsafe {
+            std::slice::from_raw_parts(
+                &input as *const FuseReleaseIn as *const u8,
+                std::mem::size_of::<FuseReleaseIn>(),
+            )
+        };
+
+        let (hdr, _) = self.send_request(FUSE_RELEASEDIR, nodeid, payload)?;
+
+        if hdr.error != 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("RELEASEDIR failed: {}", hdr.error),
+            ));
+        }
+
+        Ok(())
     }
 
     pub fn opendir(&mut self, nodeid: u64) -> std::io::Result<FuseOpenOut> {
