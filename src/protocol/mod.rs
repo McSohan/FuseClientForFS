@@ -2,16 +2,15 @@
 
 mod headers;
 // Todo: make this not pub
-// This shouldnt be pub technically, but, 
+// This shouldnt be pub technically, but,
 // I just want to get rid of the warnings for now - when I do cargo check
-pub mod opcodes; 
+pub mod opcodes;
 mod structs;
 
-use crate::transport::unix_socket::FuseStream;
 use self::headers::*;
-use self::structs::*;
 use self::opcodes::*;
-
+use self::structs::*;
+use crate::transport::unix_socket::FuseStream;
 
 pub struct FuseProtocol {
     stream: FuseStream,
@@ -54,7 +53,7 @@ impl FuseProtocol {
 
         // 5) Parse fuse_out_header
         let (out_hdr, payload_bytes) = FuseOutHeader::parse(&raw)?;
-        
+
         // 6) Return header + payload
         Ok((out_hdr, payload_bytes.to_vec()))
     }
@@ -63,8 +62,7 @@ impl FuseProtocol {
         let init_in = FuseInitIn::new();
         let payload = init_in.as_bytes();
 
-        let (hdr, payload_bytes) =
-            self.send_request(FUSE_INIT, 0, payload)?;
+        let (hdr, payload_bytes) = self.send_request(FUSE_INIT, 0, payload)?;
 
         if hdr.error != 0 {
             return Err(std::io::Error::new(
@@ -84,16 +82,13 @@ impl FuseProtocol {
         Ok(init_out)
     }
 
-    pub fn lookup(&mut self, parent: u64, name: &str)
-        -> std::io::Result<FuseEntryOut>
-    {
+    pub fn lookup(&mut self, parent: u64, name: &str) -> std::io::Result<FuseEntryOut> {
         // FUSE LOOKUP requires utf8 bytes + trailing null byte
         let mut payload = name.as_bytes().to_vec();
         payload.push(0);
 
         // Send the request
-        let (hdr, resp_payload) =
-            self.send_request(FUSE_LOOKUP, parent, &payload)?;
+        let (hdr, resp_payload) = self.send_request(FUSE_LOOKUP, parent, &payload)?;
 
         if hdr.error != 0 {
             return Err(std::io::Error::new(
@@ -108,14 +103,11 @@ impl FuseProtocol {
         Ok(entry)
     }
 
-    pub fn open(&mut self, nodeid: u64, flags: u32)
-    -> std::io::Result<FuseOpenOut>
-    {
+    pub fn open(&mut self, nodeid: u64, flags: u32) -> std::io::Result<FuseOpenOut> {
         let input = FuseOpenIn::new(flags);
         let payload = input.as_bytes();
 
-        let (hdr, resp_payload) =
-            self.send_request(FUSE_OPEN, nodeid, payload)?;
+        let (hdr, resp_payload) = self.send_request(FUSE_OPEN, nodeid, payload)?;
 
         if hdr.error != 0 {
             return Err(std::io::Error::new(
@@ -128,9 +120,13 @@ impl FuseProtocol {
         Ok(out)
     }
 
-    pub fn read(&mut self, nodeid: u64, fh: u64, offset: u64, size: u32)
-        -> std::io::Result<Vec<u8>>
-    {
+    pub fn read(
+        &mut self,
+        nodeid: u64,
+        fh: u64,
+        offset: u64,
+        size: u32,
+    ) -> std::io::Result<Vec<u8>> {
         let req = FuseReadIn {
             fh,
             offset,
@@ -160,10 +156,7 @@ impl FuseProtocol {
         Ok(data)
     }
 
-
-    pub fn release(&mut self, inode: u64, fh: u64)
-        -> std::io::Result<()>
-    {
+    pub fn release(&mut self, inode: u64, fh: u64) -> std::io::Result<()> {
         // Build fuse_release_in
         let release_in = FuseReleaseIn {
             fh,
@@ -176,7 +169,7 @@ impl FuseProtocol {
         let bytes = unsafe {
             std::slice::from_raw_parts(
                 &release_in as *const FuseReleaseIn as *const u8,
-                std::mem::size_of::<FuseReleaseIn>()
+                std::mem::size_of::<FuseReleaseIn>(),
             )
         };
 
@@ -193,9 +186,7 @@ impl FuseProtocol {
         Ok(())
     }
 
-    pub fn getattr(&mut self, nodeid: u64)
-        -> std::io::Result<FuseAttrOut>
-    {
+    pub fn getattr(&mut self, nodeid: u64) -> std::io::Result<FuseAttrOut> {
         let inmsg = FuseGetattrIn::new();
         let payload = inmsg.as_bytes();
 
@@ -212,7 +203,21 @@ impl FuseProtocol {
         Ok(out)
     }
 
+    pub fn opendir(&mut self, nodeid: u64) -> std::io::Result<FuseOpenOut> {
+        // OPENDIR uses FuseOpenIn exactly like OPEN
+        let input = FuseOpenIn::new(libc::O_RDONLY as u32);
+        let payload = input.as_bytes();
 
+        let (hdr, resp_payload) = self.send_request(FUSE_OPENDIR, nodeid, payload)?;
+
+        if hdr.error != 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("OPENDIR failed: {}", hdr.error),
+            ));
+        }
+
+        let out = FuseOpenOut::parse(&resp_payload)?;
+        Ok(out)
+    }
 }
-
-

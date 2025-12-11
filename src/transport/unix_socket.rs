@@ -1,5 +1,9 @@
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::{fs, io::{Read, Write}, path::Path};
+use std::{
+    fs,
+    io::{Read, Write},
+    path::Path,
+};
 
 pub struct FuseListener {
     listener: UnixListener,

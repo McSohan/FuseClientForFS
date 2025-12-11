@@ -40,15 +40,24 @@ impl FuseShell {
             match cmd {
                 "ls" => self.cmd_ls()?,
                 "stat" => {
-                    if args.is_empty() { println!("Usage: stat <name>"); continue; }
+                    if args.is_empty() {
+                        println!("Usage: stat <name>");
+                        continue;
+                    }
                     self.cmd_stat(args[0])?;
                 }
                 "cat" => {
-                    if args.is_empty() { println!("Usage: cat <name>"); continue; }
+                    if args.is_empty() {
+                        println!("Usage: cat <name>");
+                        continue;
+                    }
                     self.cmd_cat(args[0])?;
                 }
                 "cd" => {
-                    if args.is_empty() { println!("Usage: cd <name>"); continue; }
+                    if args.is_empty() {
+                        println!("Usage: cd <name>");
+                        continue;
+                    }
                     self.cmd_cd(args[0])?;
                 }
                 "pwd" => println!("{}", self.cwd_path.display()),
@@ -80,7 +89,7 @@ impl FuseShell {
     // }
 
     fn cmd_stat(&mut self, name: &str) -> io::Result<()> {
-        use std::time::{UNIX_EPOCH, Duration};
+        use std::time::{Duration, UNIX_EPOCH};
 
         let inode = self.lookup_name(name)?;
         let attr_out = self.proto.getattr(inode)?;
@@ -103,9 +112,15 @@ impl FuseShell {
         fn mode_to_string(mode: u32) -> String {
             let mut s = String::new();
             let perms = [
-                (libc::S_IRUSR, 'r'), (libc::S_IWUSR, 'w'), (libc::S_IXUSR, 'x'),
-                (libc::S_IRGRP, 'r'), (libc::S_IWGRP, 'w'), (libc::S_IXGRP, 'x'),
-                (libc::S_IROTH, 'r'), (libc::S_IWOTH, 'w'), (libc::S_IXOTH, 'x'),
+                (libc::S_IRUSR, 'r'),
+                (libc::S_IWUSR, 'w'),
+                (libc::S_IXUSR, 'x'),
+                (libc::S_IRGRP, 'r'),
+                (libc::S_IWGRP, 'w'),
+                (libc::S_IXGRP, 'x'),
+                (libc::S_IROTH, 'r'),
+                (libc::S_IWOTH, 'w'),
+                (libc::S_IXOTH, 'x'),
             ];
             for &(bit, ch) in &perms {
                 s.push(if mode & bit != 0 { ch } else { '-' });
@@ -127,9 +142,16 @@ impl FuseShell {
         let ctime = fmt_time(attr.ctime, attr.ctimensec);
 
         println!("  File: {}", name);
-        println!("  Size: {:<10} Blocks: {:<10} IO Block: {}", attr.size, attr.blocks, attr.blksize);
-        println!("Device: {} Inode: {}  Links: {}", attr.rdev, attr.ino, attr.nlink);
-        println!("Access: ({:o}/{})  Uid: {}  Gid: {}", 
+        println!(
+            "  Size: {:<10} Blocks: {:<10} IO Block: {}",
+            attr.size, attr.blocks, attr.blksize
+        );
+        println!(
+            "Device: {} Inode: {}  Links: {}",
+            attr.rdev, attr.ino, attr.nlink
+        );
+        println!(
+            "Access: ({:o}/{})  Uid: {}  Gid: {}",
             mode & 0o7777,
             perm_string,
             attr.uid,

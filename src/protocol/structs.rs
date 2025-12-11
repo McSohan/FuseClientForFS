@@ -11,10 +11,10 @@ pub struct FuseInitIn {
 impl FuseInitIn {
     pub fn new() -> Self {
         Self {
-            major: 7,            // Kernel-major protocol version
-            minor: 31,           // Minor version used widely; 31-36 OK
+            major: 7,  // Kernel-major protocol version
+            minor: 31, // Minor version used widely; 31-36 OK
             max_readahead: 0x20000,
-            flags: 0,            // No flags requested
+            flags: 0, // No flags requested
         }
     }
 
@@ -50,9 +50,7 @@ impl FuseInitOut {
             ));
         }
 
-        let out = unsafe {
-            *(buf.as_ptr() as *const FuseInitOut)
-        };
+        let out = unsafe { *(buf.as_ptr() as *const FuseInitOut) };
 
         Ok(out)
     }
@@ -110,9 +108,7 @@ impl FuseEntryOut {
             ));
         }
 
-        let out = unsafe {
-            *(buf.as_ptr() as *const FuseEntryOut)
-        };
+        let out = unsafe { *(buf.as_ptr() as *const FuseEntryOut) };
 
         Ok(out)
     }
@@ -121,7 +117,7 @@ impl FuseEntryOut {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct FuseOpenIn {
-    pub flags: u32, // these will come from lbc -- O_RDONLY, O_WRONLY etc. 
+    pub flags: u32, // these will come from lbc -- O_RDONLY, O_WRONLY etc.
     pub unused: u32,
 }
 
@@ -150,7 +146,6 @@ pub struct FuseOpenOut {
 
 impl FuseOpenOut {
     pub fn parse(buf: &[u8]) -> std::io::Result<Self> {
-
         // Should this be equal??? Maybe not because future versions can append shit to it.
         if buf.len() < std::mem::size_of::<Self>() {
             return Err(std::io::Error::new(
@@ -163,7 +158,6 @@ impl FuseOpenOut {
     }
 }
 
-
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct FuseReadIn {
@@ -175,7 +169,6 @@ pub struct FuseReadIn {
     pub flags: u32,
     pub padding: u32,
 }
-
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -227,7 +220,6 @@ impl FuseGetattrIn {
     }
 }
 
-
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct FuseAttrOut {
@@ -250,5 +242,50 @@ impl FuseAttrOut {
     }
 }
 
+#[derive(Debug)]
+pub struct DirEntry {
+    pub ino: u64,
+    pub offset: u64,
+    pub namelen: u32,
+    pub typ: u32,
+    pub name: String,
+}
 
+impl DirEntry {
+    pub fn parse_dirents(buf: &[u8]) -> std::io::Result<Vec<DirEntry>> {
+        let mut entries = Vec::new();
+        let mut pos = 0usize;
 
+        const DIRENT_HDR_SIZE: usize = 8 + 8 + 4 + 4;
+
+        while pos + DIRENT_HDR_SIZE <= buf.len() {
+            let ino = u64::from_le_bytes(buf[pos..pos + 8].try_into().unwrap());
+            let off = u64::from_le_bytes(buf[pos + 8..pos + 16].try_into().unwrap());
+            let namelen = u32::from_le_bytes(buf[pos + 16..pos + 20].try_into().unwrap());
+            let typ = u32::from_le_bytes(buf[pos + 20..pos + 24].try_into().unwrap());
+
+            let name_start = pos + DIRENT_HDR_SIZE;
+            let name_end = name_start + namelen as usize;
+
+            if name_end > buf.len() {
+                break;
+            }
+
+            let name =
+                String::from_utf8_lossy(&buf[name_end - namelen as usize..name_end]).to_string();
+
+            entries.push(DirEntry {
+                ino,
+                offset: off,
+                namelen,
+                typ,
+                name,
+            });
+
+            let rec_len = (DIRENT_HDR_SIZE + namelen as usize + 7) & !7;
+            pos += rec_len;
+        }
+
+        Ok(entries)
+    }
+}

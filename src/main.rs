@@ -3,9 +3,9 @@ use std::fs;
 // use std::os::unix::net::UnixListener;
 use std::path::Path;
 
-use fuse_client_for_fs::transport::unix_socket::FuseListener;
 use fuse_client_for_fs::protocol::FuseProtocol;
 use fuse_client_for_fs::shell::commands::FuseShell;
+use fuse_client_for_fs::transport::unix_socket::FuseListener;
 
 /**
 fn main() -> std::io::Result<()> {
@@ -17,7 +17,7 @@ fn main() -> std::io::Result<()> {
         fs::remove_file(path)?;
     }
 
-    // create a transport layer 
+    // create a transport layer
     let transport = FuseListener::bind("/tmp/fuse.sock")?.accept()?;
 
     // currently the protocol layer just sends a message
@@ -61,7 +61,10 @@ fn main() -> std::io::Result<()> {
     let mut proto = FuseProtocol::new(transport);
 
     let init = proto.send_init()?;
-    println!("[Debug] FUSE Initialized: major={} minor={}, congestion_threshold={}", init.major, init.minor, init.congestion_threshold);
+    println!(
+        "[Debug] FUSE Initialized: major={} minor={}, congestion_threshold={}",
+        init.major, init.minor, init.congestion_threshold
+    );
     println!("FUSE Init complete, entering shell…");
 
     let mut sh = FuseShell::new(proto)?;

@@ -51,12 +51,13 @@ pub struct FuseOutHeader {
 impl FuseOutHeader {
     pub fn parse(buf: &[u8]) -> std::io::Result<(Self, &[u8])> {
         if buf.len() < std::mem::size_of::<Self>() {
-            return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "short fuse_out_header"));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "short fuse_out_header",
+            ));
         }
 
-        let hdr = unsafe {
-            *(buf.as_ptr() as *const FuseOutHeader)
-        };
+        let hdr = unsafe { *(buf.as_ptr() as *const FuseOutHeader) };
 
         let payload = &buf[std::mem::size_of::<Self>()..hdr.len as usize];
         Ok((hdr, payload))
